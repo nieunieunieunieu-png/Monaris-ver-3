@@ -25,7 +25,7 @@ const { handleTranslateSlashCommands } = require('./slashTranslate');
 // dùng để loại trừ khi kiểm tra "interaction này có phải do file này xử lý
 // không" cho phần gate "chưa sẵn sàng" bên dưới, tránh trả lời trùng với
 // listener InteractionCreate riêng của thiKiem/index.js (và level/index.js: /level /toplevel /expinfo /levelsync /expadd /expset).
-const NON_LOCAL_COMMAND_NAMES = new Set(['tatbot', 'trangthai', 'set-mua-giai', 'xoa-diem-thi-kiem', 'xem-bang-xep-hang-thi-kiem', 'level', 'toplevel', 'topstreak', 'nhacstreak', 'expinfo', 'levelsync', 'levelnotify', 'profile', 'profilexoa', 'shopkhung', 'shopcap', 'expadd', 'expset', 'addpoint', 'logtim', 'baocaothang', 'toprole', 'themthanhtuu', 'suathanhtuu', 'xoathanhtuu', 'dsthanhtuu', 'whotagme', 'congduc', 'topcongduc', 'cuahangcongduc', 'canhgioi', 'hosocd', 'bang-nhanvat', 'nhanvat', 'xoa-nhanvat']);
+const NON_LOCAL_COMMAND_NAMES = new Set(['tatbot', 'trangthai', 'set-mua-giai', 'xoa-diem-thi-kiem', 'xem-bang-xep-hang-thi-kiem', 'level', 'toplevel', 'topstreak', 'nhacstreak', 'expinfo', 'levelsync', 'levelnotify', 'profile', 'profilexoa', 'shopkhung', 'shopcap', 'expadd', 'expset', 'addpoint', 'logtim', 'baocaothang', 'toprole', 'themthanhtuu', 'suathanhtuu', 'xoathanhtuu', 'dsthanhtuu', 'whotagme', 'congduc', 'topcongduc', 'cuahangcongduc', 'canhgioi', 'hosocd', 'bang-nhanvat', 'nhanvat', 'xoa-nhanvat', 'phoban12', 'tarot']);
 
 client.on(Events.InteractionCreate, async (interaction) => {
   // Bot chưa nạp xong dữ liệu khởi động (xem utils/readyGate.js) — CHỈ chặn
