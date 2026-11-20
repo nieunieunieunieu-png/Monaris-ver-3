@@ -21,9 +21,14 @@ function validateEnvironment(env = process.env) {
     try { credentials = JSON.parse(Buffer.from(env.GOOGLE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8')); }
     catch { try { credentials = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_BASE64); } catch { errors.push('GOOGLE_SERVICE_ACCOUNT_BASE64 không phải credentials JSON/base64 hợp lệ.'); } }
   } else if (env.GOOGLE_SERVICE_ACCOUNT_FILE || env.GOOGLE_APPLICATION_CREDENTIALS) {
-    try { credentials = JSON.parse(fs.readFileSync(env.GOOGLE_SERVICE_ACCOUNT_FILE || env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8')); }
-    catch { errors.push('Không đọc được file credentials Google.'); }
-  } else errors.push('Cần GOOGLE_SERVICE_ACCOUNT_BASE64 hoặc GOOGLE_SERVICE_ACCOUNT_FILE.');
+    const credentialPath = env.GOOGLE_APPLICATION_CREDENTIALS || env.GOOGLE_SERVICE_ACCOUNT_FILE;
+    if (process.platform !== 'win32' && /^[a-z]:[\\/]/i.test(credentialPath)) {
+      errors.push('Đường dẫn Google credentials Windows không dùng được trên Render/Linux. Đặt GOOGLE_SERVICE_ACCOUNT_BASE64 trong Environment.');
+    } else {
+      try { credentials = JSON.parse(fs.readFileSync(credentialPath, 'utf8')); }
+      catch { errors.push('Không đọc được file Google credentials trên server. Trên Render hãy dùng GOOGLE_SERVICE_ACCOUNT_BASE64.'); }
+    }
+  } else errors.push('Cần GOOGLE_SERVICE_ACCOUNT_BASE64 hoặc file credentials Google tồn tại trên server.');
   if (credentials && (!credentials.client_email || !credentials.private_key)) errors.push('Credentials Google thiếu client_email hoặc private_key.');
   if (!env.GEMINI_API_KEY) warnings.push('Chưa có GEMINI_API_KEY: AI và dịch chưa hoạt động.');
   if (!env.CONG_DUC_CHANNEL_ID) warnings.push('Chưa chọn kênh Sảnh Công Đức.');
