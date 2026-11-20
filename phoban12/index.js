@@ -16,7 +16,7 @@ const {
   EmbedBuilder
 } = require('discord.js');
 
-const { sheets } = require('@googleapis/sheets');
+const { google } = require('../googleSheets/googleClient');
 const { getGoogleAuthClient } = require('../googleSheets/auth');
 const client = require('../client');
 
@@ -104,7 +104,7 @@ async function getApi() {
     );
   }
 
-  return sheets({
+  return google.sheets({
     version: 'v4',
     auth
   });
