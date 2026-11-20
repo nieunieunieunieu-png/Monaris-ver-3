@@ -952,6 +952,7 @@ client.on(
       return;
     }
 
+    const phase = isSlash ? 'open-modal' : isCreateModal ? 'create-vote' : 'register';
     try {
       if (isSlash) {
         await handleSlashCommand(interaction);
@@ -961,26 +962,42 @@ client.on(
         await handleRegistration(interaction);
       }
     } catch (error) {
-      console.error('[Phoban12]', error);
+      // Print a stable error code and phase; users on Render do not have CMD logs.
+      const code = String(error?.code || error?.status || 'unknown').slice(0, 40);
+      console.error('[Phoban12]', {
+        phase,
+        code,
+        interactionId: interaction.id,
+        guildId: interaction.guildId,
+        commandName: interaction.commandName || null,
+        customId: interaction.isChatInputCommand() ? null : interaction.customId,
+        alreadyAcknowledged: interaction.deferred || interaction.replied,
+        message: error?.message,
+        stack: error?.stack
+      });
+
+      const hint =
+        code === '40060' ? 'Interaction đã được phản hồi bởi một handler khác.' :
+        code === '10062' ? 'Interaction đã hết hạn hoặc Discord không nhận kịp.' :
+        code === '50013' ? 'Bot thiếu quyền thao tác trong kênh.' :
+        code === '50035' ? 'Discord từ chối nội dung form/tin nhắn.' :
+        phase === 'create-vote' ? 'Kiểm tra kết nối Google Sheets, quyền ghi Sheet và quyền gửi tin.' :
+        phase === 'open-modal' ? 'Không mở được biểu mẫu Discord.' :
+        'Không xử lý được thao tác trên bảng vote.';
 
       const payload = {
-        content:
-          '❌ Monaris không thể xử lý vote.\n' +
-          'Vui lòng kiểm tra log [Phoban12] trong CMD.',
+        content: `❌ Lỗi /phoban12 [${phase}] (mã: ${code}).\n${hint}\nXem chi tiết tại Render → Logs → [Phoban12].`,
         components: []
       };
 
-      if (
-        interaction.deferred ||
-        interaction.replied
-      ) {
-        await interaction.editReply(payload)
-          .catch(() => {});
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(payload).catch(replyError => {
+          console.error('[Phoban12] Cannot edit error response:', replyError.message);
+        });
       } else {
-        await interaction.reply({
-          ...payload,
-          ...EPHEMERAL
-        }).catch(() => {});
+        await interaction.reply({ ...payload, ...EPHEMERAL }).catch(replyError => {
+          console.error('[Phoban12] Cannot send error response:', replyError.message);
+        });
       }
     }
   }
