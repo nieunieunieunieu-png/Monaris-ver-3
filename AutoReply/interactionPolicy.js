@@ -12,13 +12,15 @@ function isIgnoredAutoMessage(message) {
     SECRET.test(value) || isBlockedContentQuery(value);
 }
 
-const BONG_TAG_REPLY_CHANCE = 0.5;
+const BONG_TAG_REPLY_CHANCE = 0.3;
+const CASUAL_CHAT_REPLY_CHANCE = 0.3;
 const NORMAL_CHAT_REPLY_CHANCE = 0.2;
 const NORMAL_CHAT_REACT_CHANCE = 0.3;
 
 module.exports = {
   isIgnoredAutoMessage,
   BONG_TAG_REPLY_CHANCE,
+  CASUAL_CHAT_REPLY_CHANCE,
   NORMAL_CHAT_REPLY_CHANCE,
   NORMAL_CHAT_REACT_CHANCE,
 };
