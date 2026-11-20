@@ -473,10 +473,16 @@ async function handleCreateModal(interaction) {
   await interaction.deferReply(EPHEMERAL);
 
   // Người đang Timeout không thể thao tác vote.
-  const member = await interaction.guild.members.fetch({
-    user: interaction.user.id,
-    force: true
-  });
+  let member;
+  try {
+    member = await interaction.guild.members.fetch({
+      user: interaction.user.id,
+      force: true
+    });
+  } catch (error) {
+    error.phobanStep = 'fetch-member';
+    throw error;
+  }
 
   const restricted =
     member.roles.cache.has('1570679562873077852') ||
@@ -506,9 +512,11 @@ async function handleCreateModal(interaction) {
   };
 
   let sentMessage;
+  let step = 'google-auth';
 
   try {
     const api = await getApi();
+    step = 'discord-send';
 
     // Dang bang vote trong kenh hien tai.
     sentMessage = await interaction.channel.send(
@@ -518,6 +526,7 @@ async function handleCreateModal(interaction) {
     vote.messageId = sentMessage.id;
 
     // Luu ten pho ban vao cot I.
+    step = 'sheet-append';
     await appendRow(
       api,
       'Phoban12_Votes',
@@ -534,6 +543,7 @@ async function handleCreateModal(interaction) {
       ]
     );
 
+    step = 'confirm';
     await interaction.editReply({
       content:
         `✅ Đã tạo vote **${dungeonName}**!\n` +
@@ -541,7 +551,10 @@ async function handleCreateModal(interaction) {
         `📌 ${sentMessage.url}`
     });
   } catch (error) {
-    if (sentMessage) {
+    error.phobanStep = step;
+    // Delete only if saving failed. A failed ephemeral confirmation must not
+    // remove an otherwise valid and persisted vote panel.
+    if (sentMessage && step !== 'confirm') {
       await sentMessage.delete().catch(() => {});
     }
 
@@ -963,9 +976,11 @@ client.on(
       }
     } catch (error) {
       // Print a stable error code and phase; users on Render do not have CMD logs.
-      const code = String(error?.code || error?.status || 'unknown').slice(0, 40);
+      const code = String(error?.code || error?.status || error?.response?.status || 'unknown').slice(0, 40);
+      const step = String(error?.phobanStep || phase).slice(0, 40);
       console.error('[Phoban12]', {
         phase,
+        step,
         code,
         interactionId: interaction.id,
         guildId: interaction.guildId,
@@ -977,6 +992,11 @@ client.on(
       });
 
       const hint =
+        step === 'fetch-member' ? 'Không lấy được thông tin thành viên Discord.' :
+        step === 'google-auth' ? 'Không khởi tạo được Google Sheets API. Kiểm tra credentials trên Render.' :
+        step === 'discord-send' ? 'Không gửi được bảng vote vào kênh. Kiểm tra quyền View Channel, Send Messages và Embed Links.' :
+        step === 'sheet-append' ? 'Đã gửi được bảng vote nhưng không lưu được vào Google Sheet. Kiểm tra quyền Editor của service account và PHOBAN12_SPREADSHEET_ID.' :
+        step === 'confirm' ? 'Vote đã tạo, nhưng không gửi được xác nhận riêng tư. Kiểm tra bảng vote trong kênh.' :
         code === '40060' ? 'Interaction đã được phản hồi bởi một handler khác.' :
         code === '10062' ? 'Interaction đã hết hạn hoặc Discord không nhận kịp.' :
         code === '50013' ? 'Bot thiếu quyền thao tác trong kênh.' :
@@ -986,7 +1006,7 @@ client.on(
         'Không xử lý được thao tác trên bảng vote.';
 
       const payload = {
-        content: `❌ Lỗi /phoban12 [${phase}] (mã: ${code}).\n${hint}\nXem chi tiết tại Render → Logs → [Phoban12].`,
+        content: `❌ Lỗi /phoban12 [${step}] (mã: ${code}).\n${hint}\nXem chi tiết tại Render → Logs → [Phoban12].`,
         components: []
       };
 
