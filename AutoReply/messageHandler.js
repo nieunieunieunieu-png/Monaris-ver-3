@@ -43,7 +43,7 @@ const {
 } = require('./reactions');
 const { isOnAutoReplyCooldown, isRepeatedBotMention } = require('./cooldowns');
 const { fetchRecentChannelMessages } = require('./channelContext');
-const { isIgnoredAutoMessage, NORMAL_CHAT_REPLY_CHANCE, NORMAL_CHAT_REACT_CHANCE } = require('./interactionPolicy');
+const { isIgnoredAutoMessage, NORMAL_CHAT_REPLY_CHANCE, NORMAL_CHAT_REACT_CHANCE, CASUAL_CHAT_REPLY_CHANCE } = require('./interactionPolicy');
 
 // FIX (bug "chọn nhầm tên đầu tiên trong danh sách Bang"): khi người tag/chat
 // với bot CHƯA có trong tab "Bang"/"ChatGlobal" (chưa từng /setprofile),
@@ -319,6 +319,8 @@ client.on(Events.MessageCreate, async (message) => {
       const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
 
       if (repliedMessage.author.id === client.user.id) {
+        // Only 30% of casual replies to Monaris get a text response.
+        if (Math.random() >= CASUAL_CHAT_REPLY_CHANCE) return;
         // Thỉnh thoảng chỉ thả react qua loa thay vì gõ hẳn 1 câu — giống
         // bạn bè thật đôi lúc lười gõ, không phải lúc nào cũng cần trả lời
         // đầy đủ cho mọi tin nhắn nhỏ.
@@ -391,6 +393,7 @@ client.on(Events.MessageCreate, async (message) => {
   // dưới). Tuy nhiên NẾU cùng 1 người tag liên tục dồn dập (xem
   // isRepeatedBotMention ngay dưới) thì đổi CÁCH phản hồi cho tự nhiên hơn.
   if (message.mentions.users.has(client.user.id)) {
+    if (Math.random() >= CASUAL_CHAT_REPLY_CHANCE) return;
 const isBong =
   message.author.id === '1398428399357268068';
     const isRepeatedMention = isRepeatedBotMention(`${message.channelId}:mention:${message.author.id}`);
@@ -482,7 +485,7 @@ const isBong =
         // Đang cooldown — không chat được thì thả react thay thế, giống
         // hệt cơ chế bot-mention ở trên, rồi thử tiếp các mention khác
         // trong tin nhắn (nếu có) thay vì return luôn.
-        await message.reply({ content: 'Monaris đang bận, liên hệ lại sau nhé', allowedMentions: { repliedUser: false } }).catch(() => {});
+        // Khi dang cooldown, im lang thay vi gui them tin nhan dang ban.
         return;
       }
 
@@ -517,6 +520,7 @@ const isBong =
   for (const [keyword, response] of Object.entries(KEYWORD_RESPONSES)) {
     if (content.includes(keyword.toLowerCase())) {
       const isGoiBotKeyword = GOI_BOT_KEYWORDS.includes(keyword);
+      if (Math.random() >= CASUAL_CHAT_REPLY_CHANCE) return;
       // Trước đây TẤT CẢ từ khóa (trừ nhóm gọi bot) dùng CHUNG 1 cooldownKey
       // theo kênh -> hễ 1 từ khóa bất kỳ trigger là mọi từ khóa KHÁC trong
       // cùng kênh cũng bị khoá theo suốt 30 phút, khiến bot toàn thả react
