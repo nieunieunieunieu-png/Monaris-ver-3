@@ -1,4 +1,6 @@
 const { google } = require('./googleClient');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
@@ -31,11 +33,21 @@ async function createClient() {
 
   const credentialPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
   if (!credentialPath) {
-    console.warn('Google Sheets credentials not configured. Set GOOGLE_SERVICE_ACCOUNT_BASE64 or GOOGLE_APPLICATION_CREDENTIALS.');
+    console.warn('[Google auth] Thiếu credentials. Trên Render: đặt GOOGLE_SERVICE_ACCOUNT_BASE64 (không commit JSON vào GitHub).');
     return null;
   }
-  console.log('Google auth: dùng credentials từ file.');
-  return new google.auth.GoogleAuth({ keyFile: credentialPath, scopes: SCOPES }).getClient();
+
+  // Render runs Linux: Windows paths from a local .env cannot exist here.
+  if (process.platform !== 'win32' && /^[a-z]:[\\/]/i.test(credentialPath)) {
+    throw new Error('Render/Linux không đọc được đường dẫn Google JSON trên Windows. Đặt GOOGLE_SERVICE_ACCOUNT_BASE64 trên Render và xóa GOOGLE_SERVICE_ACCOUNT_FILE / GOOGLE_APPLICATION_CREDENTIALS đang trỏ đến E:/Monaris.');
+  }
+
+  const resolvedPath = path.resolve(credentialPath);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error('Không tìm thấy file Google credentials trên server. Với Render, hãy đặt GOOGLE_SERVICE_ACCOUNT_BASE64 trong Environment; không dùng đường dẫn từ PC.');
+  }
+  console.log('Google auth: dùng credentials từ file trên máy chủ.');
+  return new google.auth.GoogleAuth({ keyFile: resolvedPath, scopes: SCOPES }).getClient();
 }
 
 async function getGoogleAuthClient() {
