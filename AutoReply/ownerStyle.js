@@ -86,7 +86,7 @@ function makeService({ read, write, generate, forbidden = () => false, ready = (
     // Reserve this message so the normal AI handler cannot answer a second time.
     if (forbidden(m.content) || isIgnoredAutoMessage(m) || !ready()) return true;
     if (learning || busy || Date.now() - (cooldown.get(m.author.id) || 0) < 15000) {
-      await reply(m, 'Monaris đang bận, liên hệ lại sau nhé').catch(() => {});
+      // Cooldown: silent instead of sending another message into a busy channel.
       return true;
     }
     // 50% phản hồi khi thành viên tag Bông, 50% giữ im lặng.
