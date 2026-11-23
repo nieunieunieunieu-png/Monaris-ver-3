@@ -19,6 +19,7 @@ const {
 const { google } = require('../googleSheets/googleClient');
 const { getGoogleAuthClient } = require('../googleSheets/auth');
 const client = require('../client');
+const { isBong } = require('../utils/bongPermission');
 
 // ==========================================
 // CAU HINH
@@ -321,6 +322,13 @@ function voteButtons(voteId) {
         .setLabel('Swap Team')
         .setEmoji('🔄')
         .setStyle(ButtonStyle.Secondary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${PREFIX}manage:${voteId}`)
+        .setLabel('Quản lý Team')
+        .setEmoji('⚙️')
+        .setStyle(ButtonStyle.Secondary)
     )
   ];
 }
@@ -396,8 +404,12 @@ function renderVote(vote, entries) {
 // ==========================================
 
 function canCreate(interaction) {
-  return require('../utils/bongPermission')
-    .isBong(interaction);
+  return isBong(interaction) ||
+    Boolean(process.env.ADMIN_USER_ID && interaction.user?.id === process.env.ADMIN_USER_ID);
+}
+
+function canManage(interaction) {
+  return canCreate(interaction);
 }
 
 // ==========================================
@@ -923,6 +935,124 @@ async function handleRegistration(interaction) {
   });
 }
 
+
+// ==========================================
+// QUAN LY TEAM: CHI CHU BOT / ROLE BONG
+// ==========================================
+
+// Management is ephemeral: no player can click another person's controls.
+async function handleManagePanel(interaction) {
+  if (!canManage(interaction)) {
+    return interaction.reply({ content: '❌ Chỉ chủ bot hoặc role Bông có quyền quản lý team.', ...EPHEMERAL });
+  }
+
+  await interaction.deferReply(EPHEMERAL);
+  const voteId = interaction.customId.split(':')[2];
+  const api = await getApi();
+  const vote = await findVote(api, voteId);
+  if (!vote || vote.status !== 'OPEN' || vote.guildId !== interaction.guildId ||
+      vote.channelId !== interaction.channelId || vote.messageId !== interaction.message?.id) {
+    return interaction.editReply('❌ Bảng vote không tồn tại, đã đóng hoặc không đúng kênh.');
+  }
+
+  const entries = (await loadEntries(api, voteId)).filter(active);
+  if (!entries.length) return interaction.editReply('Chưa có thành viên nào báo danh để quản lý.');
+
+  const options = entries.slice(0, 12).map(entry => ({
+    label: cleanInput(entry.characterName || entry.userName || entry.userId, 90),
+    description: `Team ${entry.team} · ${cleanInput(entry.className || 'Chưa rõ phái', 60)}`,
+    value: entry.userId
+  }));
+
+  return interaction.editReply({
+    content: '⚙️ Chọn thành viên cần chuyển team hoặc loại khỏi đội hình:',
+    components: [
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`${PREFIX}target:${voteId}`)
+          .setPlaceholder('Chọn thành viên')
+          .addOptions(options)
+      )
+    ]
+  });
+}
+
+async function handleManageTarget(interaction) {
+  if (!canManage(interaction)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền quản lý team.', ...EPHEMERAL });
+  }
+  const voteId = interaction.customId.split(':')[2];
+  const userId = interaction.values?.[0];
+  if (!/^\d{17,20}$/.test(userId || '')) {
+    return interaction.reply({ content: '❌ Thành viên không hợp lệ.', ...EPHEMERAL });
+  }
+  await interaction.deferUpdate();
+  const api = await getApi();
+  const vote = await findVote(api, voteId);
+  if (!vote || vote.status !== 'OPEN' || vote.guildId !== interaction.guildId) {
+    return interaction.editReply({ content: '❌ Vote đã đóng hoặc không tồn tại.', components: [] });
+  }
+  const member = (await loadEntries(api, voteId)).find(e => e.userId === userId && active(e));
+  if (!member) return interaction.editReply({ content: '❌ Thành viên đã rời danh sách.', components: [] });
+
+  return interaction.editReply({
+    content: `⚙️ Quản lý <@${userId}> — hiện tại Team ${member.team}. Chọn thao tác:`,
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`${PREFIX}admin:${voteId}:${userId}:1`).setLabel('Chuyển Team 1').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`${PREFIX}admin:${voteId}:${userId}:2`).setLabel('Chuyển Team 2').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`${PREFIX}admin:${voteId}:${userId}:remove`).setLabel('Loại khỏi team').setStyle(ButtonStyle.Danger)
+      )
+    ],
+    allowedMentions: { parse: [] }
+  });
+}
+
+async function manageMember(voteId, userId, action, interaction) {
+  return withVoteLock(voteId, async () => {
+    const api = await getApi();
+    const vote = await findVote(api, voteId);
+    if (!vote || vote.status !== 'OPEN' || vote.guildId !== interaction.guildId) {
+      return '❌ Bảng vote không tồn tại hoặc đã đóng.';
+    }
+
+    const entries = await loadEntries(api, voteId);
+    const entry = entries.find(e => e.userId === userId && active(e));
+    if (!entry) return '❌ Người chơi chưa báo danh hoặc đã rời team.';
+
+    if (action === 'remove') {
+      entry.status = 'OFF';
+      entry.team = '';
+    } else {
+      if (!['1', '2'].includes(action)) return '❌ Team không hợp lệ.';
+      if (entry.team === action) return `Thành viên đã ở Team ${action}.`;
+      if (teamMembers(entries, action).length >= 6) return `❌ Team ${action} đã đủ 6 người.`;
+      entry.team = action;
+      entry.sequence = Date.now();
+    }
+
+    entry.updatedAt = new Date().toISOString();
+    await updateEntry(api, entry);
+    await updatePanel(vote, entries);
+    console.log('[Phoban12] Team management', {
+      voteId, actorId: interaction.user.id, targetId: userId, action
+    });
+    return action === 'remove'
+      ? `✅ Đã loại <@${userId}> khỏi đội hình. Người chơi có thể đăng ký lại nếu vote vẫn mở.`
+      : `✅ Đã chuyển <@${userId}> sang Team ${action}.`;
+  });
+}
+
+async function handleManageAction(interaction) {
+  if (!canManage(interaction)) {
+    return interaction.reply({ content: '❌ Bạn không có quyền quản lý team.', ...EPHEMERAL });
+  }
+  const [, , voteId, userId, action] = interaction.customId.split(':');
+  await interaction.deferUpdate();
+  const message = await manageMember(voteId, userId, action, interaction);
+  return interaction.editReply({ content: message, components: [], allowedMentions: { parse: [] } });
+}
+
 // ==========================================
 // DISCORD INTERACTIONS
 // ==========================================
@@ -940,6 +1070,10 @@ client.on(
     const isCreateModal =
       interaction.isModalSubmit() &&
       interaction.customId === `${PREFIX}create`;
+
+    const isManagePanel = interaction.isButton() && interaction.customId?.startsWith(`${PREFIX}manage:`);
+    const isManageTarget = interaction.isStringSelectMenu() && interaction.customId?.startsWith(`${PREFIX}target:`);
+    const isManageAction = interaction.isButton() && interaction.customId?.startsWith(`${PREFIX}admin:`);
 
     const isRegistration =
       (
@@ -960,17 +1094,27 @@ client.on(
     if (
       !isSlash &&
       !isCreateModal &&
-      !isRegistration
+      !isRegistration &&
+      !isManagePanel &&
+      !isManageTarget &&
+      !isManageAction
     ) {
       return;
     }
 
-    const phase = isSlash ? 'open-modal' : isCreateModal ? 'create-vote' : 'register';
+    const phase = isSlash ? 'open-modal' : isCreateModal ? 'create-vote' :
+      (isManagePanel || isManageTarget || isManageAction) ? 'manage-team' : 'register';
     try {
       if (isSlash) {
         await handleSlashCommand(interaction);
       } else if (isCreateModal) {
         await handleCreateModal(interaction);
+      } else if (isManagePanel) {
+        await handleManagePanel(interaction);
+      } else if (isManageTarget) {
+        await handleManageTarget(interaction);
+      } else if (isManageAction) {
+        await handleManageAction(interaction);
       } else {
         await handleRegistration(interaction);
       }
